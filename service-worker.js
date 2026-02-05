@@ -1,24 +1,20 @@
-const CACHE_NAME = "vitaminm-pwa-v4";
+const CACHE_NAME = 'vitaminm-v20260205';
 
-const CACHE_FILES = [
-  "./",
-  "./index.html",
-  "./manifest.json",
-  "./title.png"
-];
-
-self.addEventListener("install", event => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
-      return cache.addAll(CACHE_FILES);
-    })
-  );
+self.addEventListener('install', event => {
+  self.skipWaiting(); // ← これが重要
 });
 
-self.addEventListener("fetch", event => {
-  event.respondWith(
-    caches.match(event.request).then(response => {
-      return response || fetch(event.request);
-    })
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys().then(keys =>
+      Promise.all(
+        keys.map(key => {
+          if (key !== CACHE_NAME) {
+            return caches.delete(key);
+          }
+        })
+      )
+    )
   );
+  self.clients.claim(); // ← 即反映
 });
