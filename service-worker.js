@@ -1,4 +1,4 @@
-const CACHE_NAME = "vitaminm-pwa-v2";
+const CACHE_NAME = "vitaminm-pwa-v3";
 
 const CACHE_FILES = [
   "./",
