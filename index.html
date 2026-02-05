@@ -324,8 +324,8 @@ fetchList();
 setSpeed(localStorage.getItem(STORAGE_SPEED) || 1);
 
 /* ===== Service Worker ===== */
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("service-worker.js");
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('service-worker-v3.js');
 }
 </script>
 
