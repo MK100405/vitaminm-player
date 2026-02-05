@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>BAYFM78 坂本真綾の『ビタミンM』</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1c6ed5">
+
+  <style>
+    :root {
+      --bayfm-blue: #1c6ed5;
+      --bayfm-light-blue: #e8f1fb;
+      --text-main: #222;
+    }
+
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #ffffff;
+      color: var(--text-main);
+    }
+
+    .banner {
+      width: 100%;
+      aspect-ratio: 1280 / 300;
+      background: url("title.png") center / cover no-repeat;
+    }
+
+    .container {
+      max-width: 760px;
+      margin: auto;
+      padding: 16px;
+    }
+
+    h1 {
+      font-size: 20px;
+      margin: 16px 0 12px;
+      color: var(--bayfm-blue);
+    }
+
+    h2 {
+      font-size: 18px;
+      margin: 24px 0 12px;
+      border-left: 5px solid var(--bayfm-blue);
+      padding-left: 10px;
+    }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      font-size: 16px;
+      border-radius: 8px;
+      border: none;
+      background: var(--bayfm-blue);
+      color: white;
+      margin-bottom: 12px;
+    }
+
+    /* === Player controls === */
+    .player-controls {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .player-controls button {
+      flex: 1;
+      background: #ffffff;
+      color: var(--bayfm-blue);
+      border: 2px solid var(--bayfm-blue);
+      font-size: 14px;
+      margin-bottom: 0;
+    }
+
+    .speed-controls {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .speed-controls button {
+      flex: 1;
+      background: #ffffff;
+      color: var(--bayfm-blue);
+      border: 2px solid var(--bayfm-blue);
+      font-size: 14px;
+      margin-bottom: 0;
+    }
+
+    .speed-controls button.active {
+      background: var(--bayfm-blue);
+      color: #ffffff;
+    }
+
+    ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    li {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px;
+      margin-bottom: 10px;
+      background: var(--bayfm-light-blue);
+      border-radius: 10px;
+    }
+
+    li.playing {
+      border-left: 6px solid var(--bayfm-blue);
+      background: #dcecff;
+    }
+
+    input[type="radio"] {
+      width: 22px;
+      height: 22px;
+      accent-color: var(--bayfm-blue);
+    }
+
+    label {
+      flex: 1;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    audio {
+      width: 100%;
+      margin: 6px 0 24px;
+    }
+  </style>
+
+</head>
+<body>
+
+<div class="banner"></div>
+
+<div class="container">
+  <h1>BAYFM78 坂本真綾の『ビタミンM』</h1>
+
+  <h2>放送回一覧</h2>
+  <ul id="mp3List"></ul>
+
+  <button id="playBtn">選択した回を再生</button>
+
+  <h2>再生プレイヤー</h2>
+
+  <div class="player-controls">
+    <button id="back10">⏪ 10秒</button>
+    <button id="forward30">⏩ 30秒</button>
+  </div>
+
+  <div class="speed-controls">
+    <button data-speed="1">1.0x</button>
+    <button data-speed="1.25">1.25x</button>
+    <button data-speed="1.5">1.5x</button>
+  </div>
+
+  <audio id="player" controls></audio>
+</div>
+
+<script>
+const fetchBtn = document.getElementById("fetchBtn");
+const playBtn = document.getElementById("playBtn");
+const mp3List = document.getElementById("mp3List");
+const player = document.getElementById("player");
+
+const back10 = document.getElementById("back10");
+const forward30 = document.getElementById("forward30");
+const speedButtons = document.querySelectorAll(".speed-controls button");
+
+const PROGRAM_NAME = "『ビタミンM』";
+const STORAGE_EPISODE = "vitaminm_selected_episode";
+const STORAGE_TIME_PREFIX = "vitaminm_play_time_";
+const STORAGE_SPEED = "vitaminm_play_speed";
+
+let allItems = [];
+let currentLi = null;
+let currentEpisodeKey = null;
+
+/* === 再生位置操作 === */
+back10.onclick = () => {
+  player.currentTime = Math.max(0, player.currentTime - 10);
+};
+
+forward30.onclick = () => {
+  if (!isNaN(player.duration)) {
+    player.currentTime = Math.min(player.duration, player.currentTime + 30);
+  }
+};
+
+/* === 再生速度 === */
+function setSpeed(speed) {
+  player.playbackRate = speed;
+  localStorage.setItem(STORAGE_SPEED, speed);
+
+  speedButtons.forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.speed == speed);
+  });
+}
+
+speedButtons.forEach(btn => {
+  btn.addEventListener("click", () => {
+    setSpeed(btn.dataset.speed);
+  });
+});
+
+/* === 一覧取得 === */
+playBtn.addEventListener("click", playSelected);
+
+async function fetchList() {
+  mp3List.innerHTML = "";
+  allItems = [];
+
+  const target =
+    "https://api.allorigins.win/raw?url=" +
+    encodeURIComponent(
+      "https://omny.fm/shows/bayfm-program04/playlists/maaya/embed?style=cover/playlists/podcast/embed?style=cover"
+    );
+
+  try {
+    const res = await fetch(target);
+    const html = await res.text();
+
+    const mp3Urls = [...html.matchAll(/"(https?:\/\/[^"]+mp3[^"]*)"/g)].map(m => m[1]);
+    const episodes = [...html.matchAll(/"Episode"\s*:\s*(20\d{6})/g)].map(m => m[1]);
+
+    const items = mp3Urls.map((url, i) => ({
+      url,
+      episode: episodes[i],
+      date: episodes[i]
+        ? `${episodes[i].slice(0,4)}年${episodes[i].slice(4,6)}月${episodes[i].slice(6,8)}日`
+        : "日付不明"
+    }));
+
+    items.sort((a, b) => (b.episode || "").localeCompare(a.episode || ""));
+
+    const savedEpisode = localStorage.getItem(STORAGE_EPISODE);
+
+    items.forEach((item, index) => {
+      allItems.push(item);
+
+      const li = document.createElement("li");
+      const radio = document.createElement("input");
+      radio.type = "radio";
+      radio.name = "episode";
+      radio.value = index;
+
+      if (item.episode === savedEpisode || (!savedEpisode && index === 0)) {
+        radio.checked = true;
+        currentEpisodeKey = item.episode;
+      }
+
+      radio.onchange = () => {
+        localStorage.setItem(STORAGE_EPISODE, item.episode);
+        currentEpisodeKey = item.episode;
+      };
+
+      const label = document.createElement("label");
+      label.textContent = `${PROGRAM_NAME} ${item.date}`;
+
+      li.appendChild(radio);
+      li.appendChild(label);
+      mp3List.appendChild(li);
+    });
+
+  } catch {
+    alert("取得に失敗しました");
+  }
+}
+
+/* === 再生 === */
+function playSelected() {
+  const selected = mp3List.querySelector("input[type=radio]:checked");
+  if (!selected) {
+    alert("再生する回を選択してください");
+    return;
+  }
+
+  const index = selected.value;
+  const item = allItems[index];
+  const li = mp3List.children[index];
+
+  if (currentLi) currentLi.classList.remove("playing");
+  li.classList.add("playing");
+  currentLi = li;
+
+  player.src = item.url;
+  currentEpisodeKey = item.episode;
+
+  player.onloadedmetadata = () => {
+    const savedTime = localStorage.getItem(STORAGE_TIME_PREFIX + currentEpisodeKey);
+    if (savedTime) player.currentTime = parseFloat(savedTime);
+
+    const savedSpeed = localStorage.getItem(STORAGE_SPEED) || 1;
+    setSpeed(savedSpeed);
+  };
+
+  player.play();
+}
+
+/* === 再生位置保存 === */
+player.addEventListener("timeupdate", () => {
+  if (!currentEpisodeKey) return;
+  localStorage.setItem(
+    STORAGE_TIME_PREFIX + currentEpisodeKey,
+    player.currentTime
+  );
+});
+
+/* 初回 */
+fetchList();
+
+const savedSpeed = localStorage.getItem(STORAGE_SPEED) || 1;
+setSpeed(savedSpeed);
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("service-worker.js");
+}
+
+</script>
+
+</body>
+</html>
