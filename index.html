@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <title>BAYFM78 坂本真綾の『ビタミンM』</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#1c6ed5">
+<link rel="manifest" href="manifest.json">
 
 <style>
 :root{
@@ -51,9 +51,7 @@ h2{
   color:var(--blue);
 }
 
-.error{
-  color:#c0392b;
-}
+.error{ color:#c0392b; }
 
 .retry-btn{
   margin-top:12px;
@@ -64,11 +62,7 @@ h2{
   color:#fff;
 }
 
-ul{
-  list-style:none;
-  padding:0;
-  margin:0;
-}
+ul{ list-style:none; padding:0; margin:0; }
 
 li{
   display:flex;
@@ -91,11 +85,7 @@ input[type="radio"]{
   accent-color:var(--blue);
 }
 
-label{
-  flex:1;
-  font-size:16px;
-  cursor:pointer;
-}
+label{ flex:1; cursor:pointer; }
 
 .main-btn{
   padding:12px;
@@ -109,23 +99,20 @@ label{
 .offline-btn{ background:#0d3c91; }
 .delete-btn{ background:#c0392b; }
 
-/* ▼ ここが横並びの本質 */
 .action-buttons{
   display:flex;
   gap:8px;
   margin:10px 0 20px;
 }
 
-.action-buttons .main-btn{
-  flex:1;
-}
+.action-buttons .main-btn{ flex:1; }
 
 audio{
   width:100%;
   margin:10px 0 20px;
 }
 
-.controls, .speed{
+.controls,.speed{
   display:flex;
   gap:8px;
   margin-bottom:10px;
@@ -155,10 +142,9 @@ audio{
 <h1>BAYFM78 坂本真綾の『ビタミンM』</h1>
 
 <h2>放送回一覧</h2>
-<div id="status" class="status">⏳ 放送回一覧を取得しています…</div>
+<div id="status" class="status"></div>
 <ul id="mp3List"></ul>
 
-<!-- ▼ 横並びボタン -->
 <div class="action-buttons">
   <button id="playBtn" class="main-btn play-btn">再生</button>
   <button id="offlineBtn" class="main-btn offline-btn">保存</button>
@@ -168,8 +154,8 @@ audio{
 <h2>再生プレイヤー</h2>
 
 <div class="controls">
-<button id="back10">⏪ 10秒</button>
-<button id="forward30">⏩ 30秒</button>
+<button id="back10">－10秒</button>
+<button id="forward30">＋30秒</button>
 </div>
 
 <div class="speed">
@@ -182,7 +168,13 @@ audio{
 </div>
 
 <script>
-/* ===== 既存JSそのまま（削除機能含む） ===== */
+const PROGRAM_NAME="『ビタミンM』";
+const STORAGE_EPISODE="vitaminm_selected_episode";
+const STORAGE_TIME_PREFIX="vitaminm_time_";
+const STORAGE_SPEED="vitaminm_speed";
+const STORAGE_LIST="vitaminm_episode_list";
+const MP3_CACHE="vitaminm-mp3-v4";
+const FETCH_TIMEOUT=8000;
 
 const mp3List=document.getElementById("mp3List");
 const statusEl=document.getElementById("status");
@@ -192,95 +184,117 @@ const deleteBtn=document.getElementById("deleteBtn");
 const player=document.getElementById("player");
 const speedButtons=document.querySelectorAll(".speed button");
 
-const PROGRAM_NAME="『ビタミンM』";
-const STORAGE_EPISODE="vitaminm_selected_episode";
-const STORAGE_TIME_PREFIX="vitaminm_time_";
-const STORAGE_SPEED="vitaminm_speed";
-const MP3_CACHE="vitaminm-mp3-v3";
-
 let allItems=[];
 let currentEpisodeKey=null;
 let currentLi=null;
 
-/* --- 以下ロジックは前回完成版と同一 --- */
-
-async function fetchList(){
-  statusEl.textContent="⏳ 放送回一覧を取得しています…";
+/* ===== 描画関数 ===== */
+function renderList(items){
   mp3List.innerHTML="";
+  const saved=localStorage.getItem(STORAGE_EPISODE);
+
+  items.forEach((item,i)=>{
+    const li=document.createElement("li");
+    const radio=document.createElement("input");
+    radio.type="radio";
+    radio.name="episode";
+    radio.value=i;
+
+    if(item.episode===saved || (!saved && i===0)){
+      radio.checked=true;
+      currentEpisodeKey=item.episode;
+    }
+
+    radio.onchange=()=>{
+      localStorage.setItem(STORAGE_EPISODE,item.episode);
+      currentEpisodeKey=item.episode;
+    };
+
+    const label=document.createElement("label");
+    label.textContent=`${PROGRAM_NAME} ${item.date}`;
+
+    li.append(radio,label);
+    mp3List.appendChild(li);
+  });
+
+  updateCacheMarks();
+}
+
+/* ===== 取得（改善版） ===== */
+async function fetchList(){
+
+  const cached=localStorage.getItem(STORAGE_LIST);
+  if(cached){
+    try{
+      allItems=JSON.parse(cached);
+      renderList(allItems);
+      statusEl.textContent="（保存済み一覧を表示中・更新確認中…）";
+    }catch{
+      localStorage.removeItem(STORAGE_LIST);
+    }
+  }else{
+    statusEl.textContent="放送回一覧を取得しています…";
+  }
+
+  const controller=new AbortController();
+  const timeoutId=setTimeout(()=>controller.abort(),FETCH_TIMEOUT);
 
   const target="https://api.allorigins.win/raw?url="+encodeURIComponent(
     "https://omny.fm/shows/bayfm-program04/playlists/maaya/embed?style=cover/playlists/podcast/embed?style=cover"
   );
 
   try{
-    const res=await fetch(target);
+    const res=await fetch(target,{signal:controller.signal});
+    clearTimeout(timeoutId);
     const html=await res.text();
 
     const mp3=[...html.matchAll(/"(https?:\/\/[^"]+mp3[^"]*)"/g)].map(m=>m[1]);
     const episodes=[...html.matchAll(/"Episode"\s*:\s*(20\d{6})/g)].map(m=>m[1]);
 
-    allItems=mp3.map((url,i)=>({
+    const newItems=mp3.map((url,i)=>({
       url,
       episode:episodes[i],
-      date:episodes[i]?
-        `${episodes[i].slice(0,4)}年${episodes[i].slice(4,6)}月${episodes[i].slice(6,8)}日`
-        :"日付不明"
+      date:episodes[i]
+        ? `${episodes[i].slice(0,4)}年${episodes[i].slice(4,6)}月${episodes[i].slice(6,8)}日`
+        : "日付不明"
     })).sort((a,b)=>(b.episode||"").localeCompare(a.episode||""));
 
-    const saved=localStorage.getItem(STORAGE_EPISODE);
-
-    allItems.forEach((item,i)=>{
-      const li=document.createElement("li");
-      const radio=document.createElement("input");
-      radio.type="radio";
-      radio.name="episode";
-      radio.value=i;
-
-      if(item.episode===saved || (!saved && i===0)){
-        radio.checked=true;
-        currentEpisodeKey=item.episode;
-      }
-
-      radio.onchange=()=>{
-        localStorage.setItem(STORAGE_EPISODE,item.episode);
-        currentEpisodeKey=item.episode;
-      };
-
-      const label=document.createElement("label");
-      label.textContent=`${PROGRAM_NAME} ${item.date}`;
-
-      li.append(radio,label);
-      mp3List.appendChild(li);
-    });
+    if(JSON.stringify(newItems)!==cached){
+      localStorage.setItem(STORAGE_LIST,JSON.stringify(newItems));
+      allItems=newItems;
+      renderList(allItems);
+    }
 
     statusEl.textContent="";
-    updateCacheMarks();
 
   }catch{
-    statusEl.innerHTML=`<div class="error">取得失敗</div>
-    <button class="retry-btn" onclick="location.reload()">再試行</button>`;
+    clearTimeout(timeoutId);
+    if(cached){
+      statusEl.textContent="⚠ 最新取得に失敗（保存済み一覧を表示中）";
+    }else{
+      statusEl.innerHTML=`<div class="error">取得失敗</div>
+      <button class="retry-btn" onclick="location.reload()">再試行</button>`;
+    }
   }
 }
 
-async function isCached(url){
-  const cache=await caches.open(MP3_CACHE);
-  return !!(await cache.match(url));
-}
-
+/* ===== キャッシュ表示 ===== */
 async function updateCacheMarks(){
+  const cache=await caches.open(MP3_CACHE);
   const items=mp3List.querySelectorAll("li");
+
   for(let i=0;i<allItems.length;i++){
-    const cached=await isCached(allItems[i].url);
+    const res=await cache.match(allItems[i].url);
     const label=items[i].querySelector("label");
     label.textContent=`${PROGRAM_NAME} ${allItems[i].date}`;
-    if(cached) label.textContent+=" 📥";
+    if(res) label.textContent+=" ✓";
   }
 }
 
+/* ===== 再生 ===== */
 playBtn.onclick=()=>{
   const selected=mp3List.querySelector("input:checked");
   if(!selected) return;
-
   const item=allItems[selected.value];
   const li=mp3List.children[selected.value];
 
@@ -300,10 +314,10 @@ playBtn.onclick=()=>{
   player.play();
 };
 
+/* ===== 保存 ===== */
 offlineBtn.onclick=async()=>{
   const selected=mp3List.querySelector("input:checked");
   if(!selected) return;
-
   const item=allItems[selected.value];
 
   offlineBtn.textContent="保存中…";
@@ -316,14 +330,13 @@ offlineBtn.onclick=async()=>{
   }catch{
     offlineBtn.textContent="保存失敗";
   }
-
   setTimeout(()=>offlineBtn.textContent="保存",2000);
 };
 
+/* ===== 削除 ===== */
 deleteBtn.onclick=async()=>{
   const selected=mp3List.querySelector("input:checked");
   if(!selected) return;
-
   const item=allItems[selected.value];
 
   deleteBtn.textContent="削除中…";
@@ -342,10 +355,10 @@ deleteBtn.onclick=async()=>{
   }catch{
     deleteBtn.textContent="削除失敗";
   }
-
   setTimeout(()=>deleteBtn.textContent="削除",2000);
 };
 
+/* ===== 再生位置保存 ===== */
 player.addEventListener("timeupdate",()=>{
   if(currentEpisodeKey){
     localStorage.setItem(
@@ -355,6 +368,7 @@ player.addEventListener("timeupdate",()=>{
   }
 });
 
+/* ===== 再生速度 ===== */
 function setSpeed(s){
   player.playbackRate=s;
   localStorage.setItem(STORAGE_SPEED,s);
@@ -367,6 +381,7 @@ speedButtons.forEach(btn=>{
   btn.onclick=()=>setSpeed(btn.dataset.speed);
 });
 
+/* ===== シーク ===== */
 document.getElementById("back10").onclick=()=>{
   player.currentTime=Math.max(0,player.currentTime-10);
 };
@@ -376,11 +391,12 @@ document.getElementById("forward30").onclick=()=>{
   }
 };
 
+/* ===== 初期化 ===== */
 fetchList();
 setSpeed(localStorage.getItem(STORAGE_SPEED)||1);
 
 if("serviceWorker" in navigator){
-  navigator.serviceWorker.register("service-worker-v3.js");
+  navigator.serviceWorker.register("service-worker-v4.js");
 }
 </script>
 </body>
