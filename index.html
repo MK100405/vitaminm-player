@@ -12,47 +12,31 @@
   --blue:#1c6ed5;
   --light:#e8f1fb;
 }
-
 body{
   margin:0;
   font-family:system-ui,-apple-system,BlinkMacSystemFont,sans-serif;
   background:#fff;
   color:#222;
 }
-
 .banner{
   width:100%;
   aspect-ratio:1200/300;
   background:url("title.png") center/cover no-repeat;
 }
-
 .container{
   max-width:760px;
   margin:auto;
   padding:16px;
 }
-
-h1{
-  font-size:20px;
-  color:var(--blue);
-  margin:16px 0;
-}
-
+h1{ font-size:20px; color:var(--blue); margin:16px 0; }
 h2{
   font-size:18px;
   margin:24px 0 12px;
   border-left:5px solid var(--blue);
   padding-left:10px;
 }
-
-.status{
-  text-align:center;
-  padding:16px;
-  color:var(--blue);
-}
-
+.status{ text-align:center; padding:16px; color:var(--blue); }
 .error{ color:#c0392b; }
-
 .retry-btn{
   margin-top:12px;
   padding:10px 14px;
@@ -61,9 +45,7 @@ h2{
   background:var(--blue);
   color:#fff;
 }
-
 ul{ list-style:none; padding:0; margin:0; }
-
 li{
   display:flex;
   align-items:center;
@@ -73,20 +55,16 @@ li{
   background:var(--light);
   border-radius:10px;
 }
-
 li.playing{
   border-left:6px solid var(--blue);
   background:#dcecff;
 }
-
 input[type="radio"]{
   width:22px;
   height:22px;
   accent-color:var(--blue);
 }
-
 label{ flex:1; cursor:pointer; }
-
 .main-btn{
   padding:12px;
   font-size:15px;
@@ -94,30 +72,21 @@ label{ flex:1; cursor:pointer; }
   border:none;
   color:#fff;
 }
-
 .play-btn{ background:var(--blue); }
 .offline-btn{ background:#0d3c91; }
 .delete-btn{ background:#c0392b; }
-
 .action-buttons{
   display:flex;
   gap:8px;
   margin:10px 0 20px;
 }
-
 .action-buttons .main-btn{ flex:1; }
-
-audio{
-  width:100%;
-  margin:10px 0 20px;
-}
-
+audio{ width:100%; margin:10px 0 20px; }
 .controls,.speed{
   display:flex;
   gap:8px;
   margin-bottom:10px;
 }
-
 .controls button,
 .speed button{
   flex:1;
@@ -127,7 +96,6 @@ audio{
   background:#fff;
   color:var(--blue);
 }
-
 .speed button.active{
   background:var(--blue);
   color:#fff;
@@ -220,7 +188,7 @@ function renderList(items){
   updateCacheMarks();
 }
 
-/* ===== 取得（改善版） ===== */
+/* ===== 取得（耐性強化版） ===== */
 async function fetchList(){
 
   const cached=localStorage.getItem(STORAGE_LIST);
@@ -248,16 +216,51 @@ async function fetchList(){
     clearTimeout(timeoutId);
     const html=await res.text();
 
-    const mp3=[...html.matchAll(/"(https?:\/\/[^"]+mp3[^"]*)"/g)].map(m=>m[1]);
-    const episodes=[...html.matchAll(/"Episode"\s*:\s*(20\d{6})/g)].map(m=>m[1]);
+    const pattern = /"(?:Title|title)"\s*:\s*"([^"]+)"|(https?:\/\/[^"\s]+\.mp3)/g;
 
-    const newItems=mp3.map((url,i)=>({
-      url,
-      episode:episodes[i],
-      date:episodes[i]
-        ? `${episodes[i].slice(0,4)}年${episodes[i].slice(4,6)}月${episodes[i].slice(6,8)}日`
-        : "日付不明"
-    })).sort((a,b)=>(b.episode||"").localeCompare(a.episode||""));
+    let match;
+    let currentTitle=null;
+    const items=[];
+
+    while((match=pattern.exec(html))!==null){
+
+      if(match[1]){
+        currentTitle=match[1];
+      }
+
+      if(match[2]){
+        const url=match[2];
+
+        let date="日付不明";
+        let episode=null;
+
+        if(currentTitle){
+          const m=currentTitle.match(/(20\d{2})年(\d{1,2})月(\d{1,2})日/);
+          if(m){
+            const y=m[1];
+            const mo=m[2].padStart(2,"0");
+            const d=m[3].padStart(2,"0");
+
+            episode=`${y}${mo}${d}`;
+            date=`${y}年${mo}月${d}日`;
+          }
+        }
+
+        items.push({url,episode,date});
+      }
+    }
+
+    if(items.length===0){
+      console.warn("抽出失敗：HTML構造変更の可能性あり");
+    }
+
+    const uniqueMap={};
+    items.forEach(item=>{
+      uniqueMap[item.url]=item;
+    });
+
+    const newItems=Object.values(uniqueMap)
+      .sort((a,b)=>(b.episode||"").localeCompare(a.episode||""));
 
     if(JSON.stringify(newItems)!==cached){
       localStorage.setItem(STORAGE_LIST,JSON.stringify(newItems));
@@ -278,7 +281,7 @@ async function fetchList(){
   }
 }
 
-/* ===== キャッシュ表示 ===== */
+/* ===== 以下変更なし ===== */
 async function updateCacheMarks(){
   const cache=await caches.open(MP3_CACHE);
   const items=mp3List.querySelectorAll("li");
@@ -291,7 +294,6 @@ async function updateCacheMarks(){
   }
 }
 
-/* ===== 再生 ===== */
 playBtn.onclick=()=>{
   const selected=mp3List.querySelector("input:checked");
   if(!selected) return;
@@ -314,7 +316,6 @@ playBtn.onclick=()=>{
   player.play();
 };
 
-/* ===== 保存 ===== */
 offlineBtn.onclick=async()=>{
   const selected=mp3List.querySelector("input:checked");
   if(!selected) return;
@@ -333,7 +334,6 @@ offlineBtn.onclick=async()=>{
   setTimeout(()=>offlineBtn.textContent="保存",2000);
 };
 
-/* ===== 削除 ===== */
 deleteBtn.onclick=async()=>{
   const selected=mp3List.querySelector("input:checked");
   if(!selected) return;
@@ -358,7 +358,6 @@ deleteBtn.onclick=async()=>{
   setTimeout(()=>deleteBtn.textContent="削除",2000);
 };
 
-/* ===== 再生位置保存 ===== */
 player.addEventListener("timeupdate",()=>{
   if(currentEpisodeKey){
     localStorage.setItem(
@@ -368,7 +367,6 @@ player.addEventListener("timeupdate",()=>{
   }
 });
 
-/* ===== 再生速度 ===== */
 function setSpeed(s){
   player.playbackRate=s;
   localStorage.setItem(STORAGE_SPEED,s);
@@ -381,7 +379,6 @@ speedButtons.forEach(btn=>{
   btn.onclick=()=>setSpeed(btn.dataset.speed);
 });
 
-/* ===== シーク ===== */
 document.getElementById("back10").onclick=()=>{
   player.currentTime=Math.max(0,player.currentTime-10);
 };
@@ -391,7 +388,6 @@ document.getElementById("forward30").onclick=()=>{
   }
 };
 
-/* ===== 初期化 ===== */
 fetchList();
 setSpeed(localStorage.getItem(STORAGE_SPEED)||1);
 
